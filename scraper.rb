@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 require "rubygems"
 require "rails"
+require "rubyXL"
 require "bundler/setup"
 require "capybara"
 require "capybara/dsl"
@@ -63,7 +64,7 @@ module Test
       @data_array.shift
 
       # processing elements from @data_array
-      @data_array.each do |element|
+      @data_array.first(20).each do |element|
         begin
           process_single_element(element)
         rescue Capybara::Webkit::NodeNotAttachedError, Capybara::ElementNotFound
@@ -239,22 +240,43 @@ module Test
 end
 
 spider = Test::Google.new
+workbook = RubyXL::Workbook.new
+workbook.worksheets.pop
 
 ARGV.each do |arg|
   result = spider.get_results(arg.to_i)
 
-  print_result = []
+  worksheet = workbook.add_worksheet("стр #{100-arg.to_i}")
 
-  result.each do |row|
-    if row.instance_of?(Array)
-      row = row.join("  |  ")
-      print_result.push row
+  result.each_with_index do |row, row_id|
+    if result[row_id].instance_of?(Array)
+      row.each_with_index do |cell, cell_id|
+        worksheet.add_cell(row_id, cell_id, result[row_id][cell_id])
+      end
     else
-      print_result.push row
+      worksheet.add_cell(row_id, 0, result[row_id])
     end
   end
-
-  print = print_result.join("\n")
-
-  File.open("#{arg}-output.txt", "w") { |file| file.write print }
 end
+
+workbook.write("organizations.xlsx")
+
+# to txt
+# ARGV.each do |arg|
+#   result = spider.get_results(arg.to_i)
+
+#   print_result = []
+
+#   result.each do |row|
+#     if row.instance_of?(Array)
+#       row = row.join("  |  ")
+#       print_result.push row
+#     else
+#       print_result.push row
+#     end
+#   end
+
+#   print = print_result.join("\n")
+
+#   File.open("#{arg}-output.txt", "w") { |file| file.write print }
+# end

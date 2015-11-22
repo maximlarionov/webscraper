@@ -1,6 +1,5 @@
 capybara-scraper
 ================
 
-An example of how to scrape Google results using the ruby capybara gem.
-
-Credit to http://www.chadcf.com/blog/using-capybara-javascript-capable-replacement-mechanize
+Запустить 'ruby scraper.rb 100',
+где 100 - значение в строке https://eecology.espesoft.com:8443/ecologyapp/showRegisteredUser
