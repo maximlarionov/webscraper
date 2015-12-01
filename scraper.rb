@@ -1,3 +1,4 @@
+# encoding: UTF-8
 #!/usr/bin/env ruby
 require "rubygems"
 require "rails"
@@ -31,7 +32,7 @@ module Test
     include Capybara::DSL
     include WaitForAjax
 
-    def get_results(page)
+    def get_results(page, kvartal, year)
       visit "https://eecology.espesoft.com:8443/ecologyapp/showRegisteredUser"
 
       find("td #searchTextField").set(page)
@@ -56,7 +57,7 @@ module Test
 
       @data_array
 
-      @final_array_item += ["Название", "ИНН", "КПП", "Рег Номер", "Телефон", "Адрес", "Логин", "Пароль", "Сумма"]
+      @final_array_item += ["Название", "ИНН", "КПП", "Рег Номер", "Телефон", "Адрес", "Логин", "Пароль", "Общая сумма"]
 
       @final_array << @final_array_item
 
@@ -64,28 +65,24 @@ module Test
       @data_array.shift
 
       # processing elements from @data_array
-      @data_array.first(20).each do |element|
+      @data_array.each do |element|
         begin
-          process_single_element(element)
-        rescue Capybara::Webkit::NodeNotAttachedError, Capybara::ElementNotFound
-          @final_array << @final_array_item
+          process_single_element(element, kvartal, year)
+        rescue Capybara::Webkit::NodeNotAttachedError, Capybara::ElementNotFound, Selenium::WebDriver::Error::JavascriptError
+          @final_array << "\n\n"
+          next
         end
       end
 
       @final_array
     end
 
-    def process_single_element(data_element)
+    def process_single_element(data_element, kvartal, year)
       # сразу заполняем название, инн, кпп и рег номер в таблицу
+      # data_element = ["ООО \"МОНИТОРИНГОВЫЕ СИСТЕМЫ\"", 1650106800, 165001001, 102308277]
       @final_array_item = data_element.first(4)
 
       puts @final_array_item.to_s
-
-      if data_element.first(4).any?(&:blank?)
-        @final_array_item << "ИНН, КПП или Рег номер не указаны"
-        @final_array_item << "/n /n"
-        raise Capybara::ElementNotFound
-      end
 
       visit "https://eecology.espesoft.com/ecologyapp/public/mainPage.action"
 
@@ -103,24 +100,27 @@ module Test
       # вводим данные
       raschet_table = find(".tableNew").all("input")
 
-      # Если ИП - клик по ИП
-      if data_element[0].include?("И.П")
+      # Если ИП или ЧП - клик по ИП
+      if data_element[0].slice(0..4).include?("ИП" || "ЧП" || "Инди" || "Част" || "И.П" || "Ч.П")
         raschet_table[0].click
-      end
-
+        wait_for_ajax
+        raschet_table[1].set(data_element[1])
+        raschet_table[3].set(data_element[3])
+      else
       # Забиваем ИНН, КПП, Рег номер соответствующими полями
-      raschet_table[1].set(data_element[1])
-      raschet_table[2].set(data_element[2])
-      raschet_table[3].set(data_element[3])
+        raschet_table[1].set(data_element[1])
+        raschet_table[2].set(data_element[2])
+        raschet_table[3].set(data_element[3])
+      end
 
       click_on "Принять"
       wait_for_ajax
 
-      # Выбираем 4 квартал
-      find("#selectQuarter").select("4 квартал")
+      # Выбираем нужный квартал
+      find("#selectQuarter").select("#{kvartal} квартал")
 
       # 2014 год
-      find("#selectYear").select("2014")
+      find("#selectYear").select("#{year}")
 
       # Выбираем корректирующий
       find("#selectDocType").select("Корректирующий")
@@ -139,8 +139,7 @@ module Test
       sleep 10
 
       if page.body.include?("Данные Росприроднадзора")
-        @final_array_item << "Некорректно указаны персональные данные"
-        @final_array_item << "/n /n"
+        puts "Некорректно указаны персональные данные"
         raise Capybara::ElementNotFound
       end
       # подтверждаем алерт, просто так.
@@ -159,7 +158,7 @@ module Test
       vse_promploshadki_array = parse_razdels
 
       wait_for_ajax
-      @final_array_item << "Общая сумма: #{find('#declarationSumAll').text}"
+      @final_array_item << find('#declarationSumAll').text
 
       # получили данные со всех промлощадок одного элемента
       # записали в конечный массив и обнулили
@@ -188,6 +187,14 @@ module Test
 
       vse_promploshadki.each do |ploshadka|
         dropdown_dlya_promploshadok.select(ploshadka.text)
+
+        # wait_for_ajax
+
+        # какую-то фигню принять надо
+        # if page.body.include?("Принять")
+        #   click_button "Принять"
+        # end
+
         # название площадки
         ploshadka_array << "Площадка: #{ploshadka.text}"
 
@@ -196,17 +203,23 @@ module Test
         all_element_array = []
 
         elements.each_with_index do |element, index|
-          element_string = ""
+          element_array = []
           element.click
 
           wait_for_ajax
 
-          element_string += "Раздел #{index + 1}, "
+          element_array << "Раздел #{index + 1}"
           #cроки
+
           if element.first("p")
-            element_string += "Срок: #{element.first('p').text}, "
+            date_pattern = /(\d{2})\.(\d{2})\.(\d{4})/
+            msg = element.first('p').text
+
+            element_array << "С: #{msg.slice! date_pattern}"
+            element_array << "До: #{msg.slice! date_pattern}"
           else
-            element_string += "Срок: нет, "
+            element_array << "С: --"
+            element_array << "До: --"
           end
 
           #сумма
@@ -214,13 +227,13 @@ module Test
           if summa != nil && summa.text.to_f != 0.0
             sum = "Сумма: #{summa.text}"
           else
-            sum = "Сумма: нет"
+            sum = "Сумма: --"
           end
 
-          element_string += sum
+          element_array << sum
 
           # заполняем и обнуляем массив
-          all_element_array << element_string
+          all_element_array << element_array
           element_array = []
 
           sleep 1
@@ -243,10 +256,21 @@ spider = Test::Google.new
 workbook = RubyXL::Workbook.new
 workbook.worksheets.pop
 
-ARGV.each do |arg|
-  result = spider.get_results(arg.to_i)
+args = ARGV[0].split("-")
+ranges = []
 
-  worksheet = workbook.add_worksheet("стр #{100-arg.to_i}")
+if ARGV[0].include?("..")
+  ranges = Range.new(*args[0].split("..").map(&:to_i))
+else
+  ranges = [args[0].to_i]
+end
+
+ranges.each do |arg|
+  kvartal = args[1].to_i
+  year = args[2].to_i
+  result = spider.get_results(arg, kvartal, year)
+
+  worksheet = workbook.add_worksheet("стр:#{arg}, квт:#{kvartal}, год:#{year}")
 
   result.each_with_index do |row, row_id|
     if result[row_id].instance_of?(Array)
@@ -259,7 +283,7 @@ ARGV.each do |arg|
   end
 end
 
-workbook.write("organizations.xlsx")
+workbook.write("(#{Time.now.strftime("%d %h, %Y %H:%M")}) - организации.xlsx")
 
 # to txt
 # ARGV.each do |arg|
