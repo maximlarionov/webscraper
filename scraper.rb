@@ -6,7 +6,7 @@ require "rubyXL"
 require "bundler/setup"
 require "capybara"
 require "capybara/dsl"
-require "capybara-webkit"
+require "selenium-webdriver"
 require "pry"
 require "pry-byebug"
 require "spreadsheet"
@@ -32,6 +32,36 @@ module Test
     include Capybara::DSL
     include WaitForAjax
 
+    def bisection_between(data_array)
+      unless File.exists?('existing_orgs.txt')
+        `touch existing_orgs.txt`
+      end
+
+      existing_orgs = File.readlines("existing_orgs.txt").map { |el| el.gsub("\n", "") }
+
+      new_data_array = []
+      new_data_reg_nums = []
+
+      data_array.each do |element|
+        if !existing_orgs.include? element[3]
+          new_data_array << element
+          new_data_reg_nums << element[3]
+        end
+      end
+
+      new_existing_orgs = existing_orgs + new_data_reg_nums
+
+      File.truncate('existing_orgs.txt', 0)
+      File.open("existing_orgs.txt", "w") do |f|
+        new_existing_orgs.each do |row|
+          f << row
+          f << "\n"
+        end
+      end
+
+      new_data_array
+    end
+
     def get_results(page, kvartal, year)
       visit "https://eecology.espesoft.com:8443/ecologyapp/showRegisteredUser"
 
@@ -55,14 +85,15 @@ module Test
         data_element = []
       end
 
-      @data_array
-
       @final_array_item += ["Название", "ИНН", "КПП", "Рег Номер", "Телефон", "Адрес", "Логин", "Пароль", "Общая сумма"]
 
       @final_array << @final_array_item
 
       # remove useless 1'st element from @data_array
       @data_array.shift
+
+      # remove already existing orgs from data array
+      @data_array = bisection_between(@data_array)
 
       # processing elements from @data_array
       @data_array.each do |element|
