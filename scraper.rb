@@ -99,7 +99,7 @@ module Test
       @data_array.each do |element|
         begin
           process_single_element(element, kvartal, year)
-        rescue Capybara::Webkit::NodeNotAttachedError, Capybara::ElementNotFound, Selenium::WebDriver::Error::JavascriptError
+        rescue Capybara::ElementNotFound, Selenium::WebDriver::Error::JavascriptError
           @final_array << "\n\n"
           next
         end
@@ -167,7 +167,10 @@ module Test
 
       # надо подождать, пока заполнится таблица, она чот долго грузится :(((
       wait_for_ajax
-      sleep 10
+
+      while first("#loadingText") != nil do
+        sleep 2
+      end
 
       if page.body.include?("Данные Росприроднадзора")
         puts "Некорректно указаны персональные данные"
