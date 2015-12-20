@@ -110,7 +110,7 @@ module Test
 
     def process_single_element(data_element, kvartal, year)
       # сразу заполняем название, инн, кпп и рег номер в таблицу
-      # data_element = ["ООО \"МОНИТОРИНГОВЫЕ СИСТЕМЫ\"", 1650106800, 165001001, 102308277]
+      data_element = ["ООО \"БИ КОМПАНИ-СЕРВИС\"", "1644016837", "164401001", "010201494"]
       @final_array_item = data_element.first(4)
 
       puts @final_array_item.to_s
@@ -225,9 +225,9 @@ module Test
         # wait_for_ajax
 
         # какую-то фигню принять надо
-        # if page.body.include?("Принять")
-        #   click_button "Принять"
-        # end
+        if page.body.include?("Принять")
+          click_button "Принять"
+        end
 
         # название площадки
         ploshadka_array << "Площадка: #{ploshadka.text}"
