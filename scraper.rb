@@ -93,13 +93,13 @@ module Test
       @data_array.shift
 
       # remove already existing orgs from data array
-      @data_array = bisection_between(@data_array)
+      # @data_array = bisection_between(@data_array)
 
       # processing elements from @data_array
       @data_array.each do |element|
         begin
           process_single_element(element, kvartal, year)
-        rescue Capybara::ElementNotFound, Selenium::WebDriver::Error::JavascriptError
+        rescue Capybara::ElementNotFound, Selenium::WebDriver::Error::JavascriptError, Selenium::WebDriver::Error::StaleElementReferenceError
           @final_array << "\n\n"
           next
         end
@@ -110,7 +110,7 @@ module Test
 
     def process_single_element(data_element, kvartal, year)
       # сразу заполняем название, инн, кпп и рег номер в таблицу
-      data_element = ["ООО \"БИ КОМПАНИ-СЕРВИС\"", "1644016837", "164401001", "010201494"]
+      # data_element = ["ООО \"БИ КОМПАНИ-СЕРВИС\"", "1644016837", "164401001", "010201494"]
       @final_array_item = data_element.first(4)
 
       puts @final_array_item.to_s
@@ -156,17 +156,12 @@ module Test
       # Выбираем корректирующий
       find("#selectDocType").select("Корректирующий")
 
-      # заполняем нужные поля
-      # телефон
-      @final_array_item << page.all("input").map(&:value)[9]
-      # адрес
-      @final_array_item << page.first("textarea").text
-
       # создаем расчет
       click_on("Создать расчет платы")
 
       # надо подождать, пока заполнится таблица, она чот долго грузится :(((
       wait_for_ajax
+      sleep 1
 
       while first("#loadingText") != nil do
         sleep 2
@@ -176,23 +171,41 @@ module Test
         puts "Некорректно указаны персональные данные"
         raise Capybara::ElementNotFound
       end
-      # подтверждаем алерт, просто так.
-      click_button "Принять"
 
-      # заполняем логин и пароль этим хуеселектором
-      @final_array_item += page.first("td.fontGreen").text.split(/[^\d]/).join(" ").split(" ")
+      # подтверждаем алерт, просто так.
+      @final_array_item << find("div.param-block:nth-child(4) > div:nth-child(2)").text
+      @final_array_item << find("div.param-block:nth-child(5) > div:nth-child(2)").text
+
+      click_button "Закрыть"
+
+      wait_for_ajax
+      sleep(1)
+
+      # кликаем по менюшке
+      find("#showMenu").click
+      sleep(1)
+      # кликаем по реквизитам
+      find("div.menu-item:nth-child(7)").click
+      wait_for_ajax
+
+      # телефон
+      @final_array_item << first("#userPhoneInput").try(:value)
+      # адрес
+      @final_array_item << first("table.label-bold:nth-child(2) > tbody:nth-child(1) > tr:nth-child(6) > td:nth-child(2) > span:nth-child(3)").try(:text)
+      # закрываем менюшку
+      find("div.ui-dialog:nth-child(6) > div:nth-child(1) > button:nth-child(2)").click
 
 # __________ все что выше - работает. Все данные до адреса и телефона включительно
 # __________ down here is needed to rework a little bit __________
 
       # метод для обработки разделов
-      # find("ul#accordion").all("li").first.click
       wait_for_ajax
 
       vse_promploshadki_array = parse_razdels
 
       wait_for_ajax
-      @final_array_item << find('#declarationSumAll').text
+      # вся сумма
+      @final_array_item << find('.text-right > div:nth-child(2) > strong:nth-child(1) > span:nth-child(1)').text
 
       # получили данные со всех промлощадок одного элемента
       # записали в конечный массив и обнулили
@@ -213,7 +226,7 @@ module Test
 
     def parse_razdels
       # находим дропдаун со всеми элементами
-      dropdown_dlya_promploshadok = find("#areaTemp")
+      dropdown_dlya_promploshadok = find("#statusSelect")
       vse_promploshadki = dropdown_dlya_promploshadok.all("option")
 
       vse_promploshadki_array = []
@@ -225,24 +238,25 @@ module Test
         # wait_for_ajax
 
         # какую-то фигню принять надо
-        if page.body.include?("Принять")
-          click_button "Принять"
-        end
+        # if page.body.include?("Принять")
+        #   click_button "Принять"
+        # end
 
         # название площадки
         ploshadka_array << "Площадка: #{ploshadka.text}"
 
-        list = find("ul#accordion")
+        # табы с разделами
+        list = find("div.row:nth-child(5) > div:nth-child(1) > ul:nth-child(1)")
         elements = list.all("li")
         all_element_array = []
 
-        elements.each_with_index do |element, index|
+        elements.each do |element|
           element_array = []
           element.click
 
           wait_for_ajax
 
-          element_array << "Раздел #{index + 1}"
+          element_array << element.text
           #cроки
 
           if element.first("p")
@@ -257,14 +271,8 @@ module Test
           end
 
           #сумма
-          summa = element.all("strong").select { |t| t.text != "0" }.last(2).uniq.last
-          if summa != nil && summa.text.to_f != 0.0
-            sum = "Сумма: #{summa.text}"
-          else
-            sum = "Сумма: --"
-          end
-
-          element_array << sum
+          summa = "Сумма: " + find(".text-right > div:nth-child(1) > strong:nth-child(1) > span:nth-child(1)").text
+          element_array << summa
 
           # заполняем и обнуляем массив
           all_element_array << element_array
